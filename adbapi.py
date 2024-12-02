@@ -5,21 +5,27 @@ import pytesseract
 import re
 
 class Device:
-    def __init__(self, port, _devices) -> None:
+    def __init__(self, port, _devices, emulator, _name) -> None:
         current_dir = os.getcwd()
         adb_path = self.find_executable('adb.exe', current_dir)
         if not adb_path:
             raise FileNotFoundError("adb.exe not found in the current directory or subdirectories.")
         
+        self.name = _name #only used if emulator = 1
+        self.emulator = emulator #using emulator 1 - yes, 0 - no
         self.adb = adb_path
         self.port = port  # Port of emulator to run code on, default #5554
         self.devices = _devices  # Number of devices, default 1, only tested for 3..., 0 - checks for devices
 
         subprocess.call(['taskkill', '/F', '/IM', 'adb.exe'])
-        self.connect_emulators()
+        if(self.emulator == 1): #else establish connection to phonep
+            self.connect_emulators()
 
+        if(self.emulator == 0):
+            subprocess.run(f'"{self.adb}" devices', shell=True)
+            subprocess.run(f'"{self.adb}" -s {self.name} shell wm size', check=True)
+        
         subprocess.run(f'"{self.adb}" start-server', shell=True)
-        subprocess.run(f'"{self.adb}" devices', shell=True)
 
     def find_executable(self, filename, search_path):
         """Search for an executable file in the given directory and subdirectories."""
@@ -30,25 +36,42 @@ class Device:
 
     def screenshot(self) -> Image:
         screenshot_path = os.path.join(os.getcwd(), f'emu-{self.port}.png')
+        screenshot_path_phone = os.path.join(os.getcwd(), f'phn-{self.name}.png')
+        print(screenshot_path_phone)
         temp_screenshot_path = '/data/local/tmp/image.png'
 
-        subprocess.call(f'"{self.adb}" -s emulator-{self.port} shell screencap -p {temp_screenshot_path}', shell=True)
-        subprocess.run(f'"{self.adb}" -s emulator-{self.port} pull {temp_screenshot_path} "{screenshot_path}"', shell=True)
+        if(self.emulator == 1):
+            subprocess.call(f'"{self.adb}" -s emulator-{self.port} shell screencap -p {temp_screenshot_path}', shell=True)
+            subprocess.run(f'"{self.adb}" -s emulator-{self.port} pull {temp_screenshot_path} "{screenshot_path}"', shell=True)
+            screenshot = Image.open(screenshot_path)
 
-        screenshot = Image.open(screenshot_path)
+        if(self.emulator == 0):
+            subprocess.call(f'"{self.adb}" -s {self.name} shell screencap -p {temp_screenshot_path}', shell=True)
+            subprocess.run(f'"{self.adb}" -s {self.name} pull {temp_screenshot_path} "{screenshot_path_phone}"', shell=True)
+            
+            screenshot = Image.open(screenshot_path_phone)
+
         return screenshot
 
     def screenInput(self, x, y) -> None:
         # Sending a touch input command to the emulator
-        print(f'Input at: {x}, {y}')
-        subprocess.Popen(f'"{self.adb}" -s emulator-{self.port} shell input tap {x} {y}', shell=True)
+        
+        if(self.emulator == 1):
+            print(f'Input emulator-{self.port} at: {x}, {y}')
+            subprocess.Popen(f'"{self.adb}" -s emulator-{self.port} shell input tap {x} {y}', shell=True)
+        if(self.emulator == 0):
+            print(f'Input {self.name} at: {x}, {y}')
+            subprocess.Popen(f'"{self.adb}" -s {self.name} shell input tap {x} {y}', shell=True)
 
     def screenSwipe(self,x1,y1,x2,y2) -> None:
         print(f'Swiping from: {x1}, {y1} -> {x2}, {y2}')
-        subprocess.Popen(f'"{self.adb}" -s emulator-{self.port} shell input touchscreen swipe {x1} {y1} {x2} {y2}', shell=True)
+        if(self.emulator == 1):
+            subprocess.Popen(f'"{self.adb}" -s emulator-{self.port} shell input touchscreen swipe {x1} {y1} {x2} {y2}', shell=True)
+        if(self.emulator == 0):
+            subprocess.Popen(f'"{self.adb}" -s {self.name} shell input touchscreen swipe {x1} {y1} {x2} {y2}', shell=True)
 
     @staticmethod
-    def generate_ports(self) -> list:
+    def generate_ports(self) -> list: #emulator
         if self.devices == 0:
             print(f'Finding devices..')
             devices_output = subprocess.run(f'"{self.adb}" devices', shell=True, capture_output=True, text=True)
